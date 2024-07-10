@@ -62,5 +62,6 @@ The C version runs, of course, much faster. You'll see the same samples and test
 
 ### TODOs
 
-Make better
-Make exerrcises
+- Make better
+- Make exercises
+- Call for help: nice visualization / webapp that shows and animates the 4-gram language model and how it works.
