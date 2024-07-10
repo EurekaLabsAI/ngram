@@ -9,6 +9,7 @@ Example run:
 python ngram.py
 """
 
+import os
 import itertools
 import numpy as np
 
@@ -193,5 +194,6 @@ print("test_loss %f, test_perplexity %f" % (test_loss, test_perplexity))
 # get the final counts, normalize them to probs, and write to disk for vis
 counts = model.counts + model.smoothing
 probs = counts / counts.sum(axis=-1, keepdims=True)
-np.save("ngram_probs.npy", probs)
-print("wrote ngram_probs.npy to disk (for visualization)")
+vis_path = os.path.join("dev", "ngram_probs.npy")
+np.save(vis_path, probs)
+print(f"wrote {vis_path} to disk (for visualization)")
