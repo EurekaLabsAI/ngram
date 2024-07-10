@@ -6,6 +6,8 @@ Our dataset is that of 32,032 names from [ssa.gov](https://www.ssa.gov/oact/baby
 
 A great reference for this module is [Chapter 3](https://web.stanford.edu/~jurafsky/slp3/3.pdf) of "Speech and Language Processing" by Jurafsky and Martin.
 
+Currently, the best "build this repo from scratch" reference is the ["The spelled-out intro to language modeling: building makemore"](https://www.youtube.com/watch?v=PaCmpygFfXo) YouTube video, though some of the details have changed around a bit. The major departure is that the video covers a bigram Language Model, which for us is just a special case when `n = 2` for the n-gram.
+
 ### Python version
 
 To run the Python code, ensure you have `numpy` installed (e.g. `pip install numpy`), and then run the script:
