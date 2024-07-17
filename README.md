@@ -53,7 +53,7 @@ The Python code also writes out the n-gram probabilities to disk into the `dev/`
 
 ### C version
 
-The C model is identical in functionality but skips the cross-validation. Instead, it hardcodes `n=4, smoothing=0.01`, but does the training, sampling, and test perplexity evaluation and achieves the exact same results as the Python version. An example of compiling and running the C code is as follows:
+The C model is identical in functionality but skips the cross-validation. Instead, it hardcodes `n=4, smoothing=0.1`, but does the training, sampling, and test perplexity evaluation and achieves the exact same results as the Python version. An example of compiling and running the C code is as follows:
 
 ```bash
 clang -O3 -o ngram ngram.c -lm
