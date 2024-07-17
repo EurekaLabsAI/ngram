@@ -137,72 +137,71 @@ def eval_split(model, tokens):
 
 # -----------------------------------------------------------------------------
 
-# "train" the Tokenizer, so we're able to map between characters and tokens
-train_text = open('data/train.txt', 'r').read()
-assert all(c == '\n' or ('a' <= c <= 'z') for c in train_text)
-uchars = sorted(list(set(train_text))) # unique characters we see in the input
-vocab_size = len(uchars)
-char_to_token = {c: i for i, c in enumerate(uchars)}
-token_to_char = {i: c for i, c in enumerate(uchars)}
-EOT_TOKEN = char_to_token['\n'] # designate \n as the delimiting <|endoftext|> token
-# pre-tokenize all the splits one time up here
-test_tokens = [char_to_token[c] for c in open('data/test.txt', 'r').read()]
-val_tokens = [char_to_token[c] for c in open('data/val.txt', 'r').read()]
-train_tokens = [char_to_token[c] for c in open('data/train.txt', 'r').read()]
+def main():
+    # "train" the Tokenizer, so we're able to map between characters and tokens
+    train_text = open('data/train.txt', 'r').read()
+    assert all(c == '\n' or ('a' <= c <= 'z') for c in train_text)
+    uchars = sorted(list(set(train_text))) # unique characters we see in the input
+    vocab_size = len(uchars)
+    char_to_token = {c: i for i, c in enumerate(uchars)}
+    token_to_char = {i: c for i, c in enumerate(uchars)}
+    EOT_TOKEN = char_to_token['\n'] # designate \n as the delimiting <|endoftext|> token
+    # pre-tokenize all the splits one time up here
+    test_tokens = [char_to_token[c] for c in open('data/test.txt', 'r').read()]
+    val_tokens = [char_to_token[c] for c in open('data/val.txt', 'r').read()]
+    train_tokens = [char_to_token[c] for c in open('data/train.txt', 'r').read()]
 
-# hyperparameter search with grid search over the validation set
-seq_lens = [3, 4, 5]
-smoothings = [0.03, 0.1, 0.3, 1.0]
-best_loss = float('inf')
-best_kwargs = {}
-for seq_len, smoothing in itertools.product(seq_lens, smoothings):
-    # train the n-gram model
-    model = NgramModel(vocab_size, seq_len, smoothing)
+    # hyperparameter search with grid search over the validation set
+    seq_lens = [3, 4, 5]
+    smoothings = [0.03, 0.1, 0.3, 1.0]
+    best_loss = float('inf')
+    best_kwargs = {}
+    for seq_len, smoothing in itertools.product(seq_lens, smoothings):
+        # train the n-gram model
+        model = NgramModel(vocab_size, seq_len, smoothing)
+        for tape in dataloader(train_tokens, seq_len):
+            model.train(tape)
+        # evaluate the train/val loss
+        train_loss = eval_split(model, train_tokens)
+        val_loss = eval_split(model, val_tokens)
+        print("seq_len %d | smoothing %.2f | train_loss %.4f | val_loss %.4f"
+            % (seq_len, smoothing, train_loss, val_loss))
+        # update the best hyperparameters
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_kwargs = {'seq_len': seq_len, 'smoothing': smoothing}
+
+    # re-train the model with the best hyperparameters
+    seq_len = best_kwargs['seq_len']
+    print("best hyperparameters:", best_kwargs)
+    model = NgramModel(vocab_size, **best_kwargs)
     for tape in dataloader(train_tokens, seq_len):
         model.train(tape)
-    # evaluate the train/val loss
-    train_loss = eval_split(model, train_tokens)
-    val_loss = eval_split(model, val_tokens)
-    print("seq_len %d | smoothing %.2f | train_loss %.4f | val_loss %.4f"
-          % (seq_len, smoothing, train_loss, val_loss))
-    # update the best hyperparameters
-    if val_loss < best_loss:
-        best_loss = val_loss
-        best_kwargs = {'seq_len': seq_len, 'smoothing': smoothing}
 
-# re-train the model with the best hyperparameters
-seq_len = best_kwargs['seq_len']
-print("best hyperparameters:", best_kwargs)
-model = NgramModel(vocab_size, **best_kwargs)
-for tape in dataloader(train_tokens, seq_len):
-    model.train(tape)
+    sample_rng = RNG(1337)
+    # sample from the model
+    tape = [EOT_TOKEN] * (seq_len - 1)
+    for _ in range(200):
+        probs = model(tape)
+        # sample the next token
+        coinf = sample_rng.random()
+        probs_list = probs.tolist()
+        next_token = sample_discrete(probs_list, coinf)
+        # otherwise update the token tape, print token and continue
+        next_char = token_to_char[next_token]
+        # update the tape
+        tape.append(next_token)
+        if len(tape) > seq_len - 1:
+            tape = tape[1:]
+        print(next_char, end='')
+    print() # newline
 
-# sample from the model
-sample_rng = RNG(1337)
-tape = [EOT_TOKEN] * (seq_len - 1)
-for _ in range(200):
-    probs = model(tape)
-    # sample the next token
-    coinf = sample_rng.random()
-    probs_list = probs.tolist()
-    next_token = sample_discrete(probs_list, coinf)
-    # otherwise update the token tape, print token and continue
-    next_char = token_to_char[next_token]
-    # update the tape
-    tape.append(next_token)
-    if len(tape) > seq_len - 1:
-        tape = tape[1:]
-    print(next_char, end='')
-print() # newline
-
-# at the end, evaluate and report the test loss
-test_loss = eval_split(model, test_tokens)
-test_perplexity = np.exp(test_loss)
-print("test_loss %f, test_perplexity %f" % (test_loss, test_perplexity))
-
-# get the final counts, normalize them to probs, and write to disk for vis
-counts = model.counts + model.smoothing
-probs = counts / counts.sum(axis=-1, keepdims=True)
-vis_path = os.path.join("dev", "ngram_probs.npy")
-np.save(vis_path, probs)
-print(f"wrote {vis_path} to disk (for visualization)")
+    # get the final counts, normalize them to probs, and write to disk for vis
+    counts = model.counts + model.smoothing
+    probs = counts / counts.sum(axis=-1, keepdims=True)
+    vis_path = os.path.join("dev", "ngram_probs.npy")
+    np.save(vis_path, probs)
+    print(f"wrote {vis_path} to disk (for visualization)")
+    
+if __name__ == "__main__":
+    main()
