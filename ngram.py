@@ -14,20 +14,31 @@ import itertools
 import numpy as np
 
 # -----------------------------------------------------------------------------
-# utils for random number generation and sampling
+# random number generation
 
-def random_u32(state):
-    # xorshift rng: https://en.wikipedia.org/wiki/Xorshift#xorshift.2A
-    # doing & 0xFFFFFFFFFFFFFFFF is the same as cast to uint64 in C
-    # doing & 0xFFFFFFFF is the same as cast to uint32 in C
-    state[0] ^= (state[0] >> 12) & 0xFFFFFFFFFFFFFFFF
-    state[0] ^= (state[0] << 25) & 0xFFFFFFFFFFFFFFFF
-    state[0] ^= (state[0] >> 27) & 0xFFFFFFFFFFFFFFFF
-    return ((state[0] * 0x2545F4914F6CDD1D) >> 32) & 0xFFFFFFFF
+# class that mimics the random interface in Python, fully deterministic,
+# and in a way that we also control fully, and can also use in C, etc.
+class RNG:
+    def __init__(self, seed):
+        self.state = seed
 
-def random_f32(state):
-    # random float32 in [0,1)
-    return (random_u32(state) >> 8) / 16777216.0
+    def random_u32(self):
+        # xorshift rng: https://en.wikipedia.org/wiki/Xorshift#xorshift.2A
+        # doing & 0xFFFFFFFFFFFFFFFF is the same as cast to uint64 in C
+        # doing & 0xFFFFFFFF is the same as cast to uint32 in C
+        self.state ^= (self.state >> 12) & 0xFFFFFFFFFFFFFFFF
+        self.state ^= (self.state << 25) & 0xFFFFFFFFFFFFFFFF
+        self.state ^= (self.state >> 27) & 0xFFFFFFFFFFFFFFFF
+        return ((self.state * 0x2545F4914F6CDD1D) >> 32) & 0xFFFFFFFF
+
+    def random(self):
+        # random float32 in [0, 1)
+        return (self.random_u32() >> 8) / 16777216.0
+
+random = RNG(1337)
+
+# -----------------------------------------------------------------------------
+# sampling from the model
 
 def sample_discrete(probs, coinf):
     # sample from a discrete distribution
@@ -169,12 +180,11 @@ for tape in dataloader(train_tokens, seq_len):
     model.train(tape)
 
 # sample from the model
-rng_state = [1337]
 tape = [EOT_TOKEN] * (seq_len - 1)
 for _ in range(200):
     probs = model(tape)
     # sample the next token
-    coinf = random_f32(rng_state)
+    coinf = random.random()
     probs_list = probs.tolist()
     next_token = sample_discrete(probs_list, coinf)
     # otherwise update the token tape, print token and continue
