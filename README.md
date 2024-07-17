@@ -71,7 +71,7 @@ Create a virtual environment and install the dependencies:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install streamlit matplotlib
+pip install streamlit matplotlib seaborn
 ```
 
 Then start the GUI:

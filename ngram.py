@@ -202,6 +202,6 @@ def main():
     vis_path = os.path.join("dev", "ngram_probs.npy")
     np.save(vis_path, probs)
     print(f"wrote {vis_path} to disk (for visualization)")
-    
+
 if __name__ == "__main__":
     main()

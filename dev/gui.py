@@ -3,6 +3,7 @@ import itertools
 import sys
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -56,6 +57,8 @@ if not all(isinstance(x, (int, float)) and x > 0 for x in smoothings):
     st.stop()
 
 random_seed = st.sidebar.number_input("Random Seed", 1337)
+random = RNG(random_seed)
+
 test_tokens_path = st.sidebar.text_input("Test Tokens Path", "data/test.txt")
 val_tokens_path = st.sidebar.text_input("Validation Tokens Path", "data/val.txt")
 train_tokens_path = st.sidebar.text_input("Training Tokens Path", "data/train.txt")
@@ -63,21 +66,22 @@ train_tokens_path = st.sidebar.text_input("Training Tokens Path", "data/train.tx
 iterations = len(seq_lens) * len(smoothings)
 st.sidebar.write(f"Iterations: {iterations}")
 
-if st.button("Evaluate Hyperparameters"):
-    # "train" the Tokenizer, so we're able to map between characters and tokens
-    train_text = open(train_tokens_path, "r").read()
-    assert all(c == "\n" or ("a" <= c <= "z") for c in train_text)
-    uchars = sorted(list(set(train_text)))  # unique characters we see in the input
-    vocab_size = len(uchars)
-    char_to_token = {c: i for i, c in enumerate(uchars)}
-    token_to_char = {i: c for i, c in enumerate(uchars)}
-    # designate \n as the delimiting <|endoftext|> token
-    EOT_TOKEN = char_to_token["\n"]
-    # pre-tokenize all the splits one time up here
-    test_tokens = [char_to_token[c] for c in open(test_tokens_path, "r").read()]
-    val_tokens = [char_to_token[c] for c in open(val_tokens_path, "r").read()]
-    train_tokens = [char_to_token[c] for c in open(train_tokens_path, "r").read()]
+# Foundationally useful code for all visualizations. Doing tokenization.
+train_text = open(train_tokens_path, "r").read()
+assert all(c == "\n" or ("a" <= c <= "z") for c in train_text)
+uchars = sorted(list(set(train_text)))  # unique characters we see in the input
+vocab_size = len(uchars)
+char_to_token = {c: i for i, c in enumerate(uchars)}
+token_to_char = {i: c for i, c in enumerate(uchars)}
+# designate \n as the delimiting <|endoftext|> token
+EOT_TOKEN = char_to_token["\n"]
+# pre-tokenize all the splits one time up here
+test_tokens = [char_to_token[c] for c in open(test_tokens_path, "r").read()]
+val_tokens = [char_to_token[c] for c in open(val_tokens_path, "r").read()]
+train_tokens = [char_to_token[c] for c in open(train_tokens_path, "r").read()]
 
+
+if st.button("Evaluate Hyperparameters"):
     best_loss = float("inf")
     best_kwargs = {}
 
@@ -175,6 +179,7 @@ if st.button("Evaluate Hyperparameters"):
         )
         st.stop()
 
+    st.write("## Probability Heatmap")
     # reshape to a 2D matrix and plot a heatmap
     reshaped = probs.reshape(27**2, 27**2)
     fig, ax = plt.subplots(figsize=(8, 7))
@@ -207,3 +212,89 @@ if st.button("Evaluate Hyperparameters"):
     This visualization helps to understand how the model has learned the statistical 
     patterns of the language from the training data.
     """)
+
+    st.write("## How the N-Gram model generates names")
+
+    st.write("### Using Best Model")
+    st.write(f"##### Sequence length (N) of {seq_len} and smoothing of {best_kwargs['smoothing']}")
+
+    st.write("### Step-by-step name generation")
+    st.write("""At each step, the model looks at (N - 1) tokens and outputs
+        a probability distribution function of what the next token will be.
+        For each possible token value, the model outputs a probability.
+        The model can generate unique names by 'sampling' from the distribution of probabilities,
+        and picking a next token. Let's visualize how this works step-by-step.""")
+
+    st.write("##### Special Note")
+    st.write("The model outputs tokens, which in this case, correspond to characters. In more complex models like GPT, tokens can represent more than one character. In our case, here is a reference for what value each token index maps to.")
+    df = pd.DataFrame({
+        "Token Index": [char_to_token[c] for c in uchars],
+        "Token Value": [r'\n' if c == '\n' else c for c in uchars],
+    })
+    st.dataframe(df.T)
+
+    name = ""
+
+    # Reset the random seed and tape to visualize the first output
+    tape = [EOT_TOKEN] * (seq_len - 1)
+    random = RNG(random_seed)
+
+    while len(name) == 0 or name[-1] != '\n':
+        if len(name) == 0:
+            st.write("""As sampling from the model begins, and few tokens are generated, notice that the probability distribution is quite uniform.""")
+        if len(name) == seq_len - 1:
+            st.write("""As the tape fills with prior characters, the model has more conditions upon which to have a more opinionated probability distribution.""")
+            st.write("""Also note that the model may sample from this distribution of characters. It does not necessarily pick the most likely character from the probability distribution function (PDF).""")
+
+        probs = model(tape)
+        chars = list(token_to_char[i] for i, prob in enumerate(probs))
+        df = pd.DataFrame({
+            "Token": chars,
+            "Probability": probs,
+        })
+        df_display = df.copy()
+        df_display['Probability'] = df_display['Probability'].apply(lambda x: f"{x:.4g}")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write(f"##### Step: {len(name) + 1}")
+            st.write(f"Tape of input tokens to model: {tape}\n\nCharacters shown to model: {list(token_to_char[i] for i in tape)}")
+            st.dataframe(df_display.T)
+
+            # sample the next token
+            coinf = random.random()
+            probs_list = probs.tolist()
+            next_token = sample_discrete(probs_list, coinf)
+            # otherwise update the token tape, print token and continue
+            next_char = token_to_char[next_token]
+            # update the tape
+            tape.append(next_token)
+            if len(tape) > seq_len - 1:
+                tape = tape[1:]
+
+            st.write(f"Next Token: {next_token}, Next Character: '{token_to_char[next_token]}'")
+
+        with col2:
+            # Plotting the PDF
+            fig, ax = plt.subplots()
+            norm = plt.Normalize(df['Probability'].min(), df['Probability'].max())
+            sm = plt.cm.ScalarMappable(cmap='RdYlGn', norm=norm)
+            sm.set_array([])
+
+            colors = sm.to_rgba(df['Probability']).tolist()
+
+            sns.barplot(x='Token', y='Probability', data=df, palette=colors, hue='Token', dodge=False, ax=ax)
+
+            # Adding labels
+            ax.set_xlabel('Token')
+            ax.set_ylabel('Probability')
+            ax.set_title(f'Probability of Next Token (From State: "{name}")')
+            ax.set_ylim(0, 1)
+
+            # Display the plot
+            st.pyplot(fig)
+
+        name += next_char
+
+    st.write(f'### Final name: {name}')
