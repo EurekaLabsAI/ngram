@@ -16,7 +16,7 @@ To run the Python code, ensure you have `numpy` installed (e.g. `pip install num
 python ngram.py
 ```
 
-You'll see that the script first "trains" a small character-level Tokenizer (the vocab size is 27 for all 26 lowercase English letters and the newline character), then it conducts a small grid search of n-gram models with various hyperparameter settings for the n-gram order `n` and the smoothing factor, using the validation split. With default settings on our data, the values that turn out to be optimal are `n=4, smoothing=0.01`. It then takes this best model, samples 200 characters from it, and finally reports the test loss and perplexity. Here is the full output, it should only take a few seconds to produce:
+You'll see that the script first "trains" a small character-level Tokenizer (the vocab size is 27 for all 26 lowercase English letters and the newline character), then it conducts a small grid search of n-gram models with various hyperparameter settings for the n-gram order `n` and the smoothing factor, using the validation split. With default settings on our data, the values that turn out to be optimal are `n=4, smoothing=0.1`. It then takes this best model, samples 200 characters from it, and finally reports the test loss and perplexity. Here is the full output, it should only take a few seconds to produce:
 
 ```
 python ngram.py
