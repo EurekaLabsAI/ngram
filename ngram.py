@@ -178,7 +178,7 @@ else:
 
 # re-train the model with the best hyperparameters
 seq_len = best_kwargs['seq_len']
-print("best hyperparameters:", best_kwargs)
+print(f"best hyperparameters: {best_kwargs}")
 model = NgramModel(vocab_size, **best_kwargs)
 for tape in dataloader(train_tokens, seq_len):
     model.train(tape)
