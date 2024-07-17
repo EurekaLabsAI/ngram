@@ -59,8 +59,8 @@ class NgramModel:
         self.counts[tuple(tape)] += 1
 
     def get_counts(self, tape):
-        assert isinstance(tape, list)
-        assert len(tape) == self.seq_len - 1
+        assert isinstance(tape, list), f"Expected a list, got {type(tape)}"
+        assert len(tape) == self.seq_len - 1, f"Expected a list of length {self.seq_len - 1}, got {len(tape)}"
         return self.counts[tuple(tape)]
 
     def get_prob_distribution(self):
@@ -94,14 +94,14 @@ class BackoffNgramModel:
         self.models = {i: NgramModel(vocab_size, i, smoothing) for i in range(1, seq_len + 1)}
 
     def train(self, tape):
-        assert isinstance(tape, list)
-        assert len(tape) == self.seq_len
+        assert isinstance(tape, list), f"Expected a list, got {type(tape)}"
+        assert len(tape) == self.seq_len, f"Expected a list of length {self.seq_len}, got {len(tape)}"
         for i in range(1, self.seq_len + 1):
             self.models[i].train(tape[-i:])
 
     def __call__(self, tape):
-        assert isinstance(tape, list)
-        assert len(tape) == self.seq_len - 1
+        assert isinstance(tape, list), f"Expected a list, got {type(tape)}"
+        assert len(tape) == self.seq_len - 1, f"Expected a list of length {self.seq_len - 1}, got {len(tape)}"
         # find the highest order model that has data for the current context
         for i in reversed(range(1, self.seq_len + 1)):
             tape_i = tape[-i+1:] if i > 1 else []
