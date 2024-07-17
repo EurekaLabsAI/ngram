@@ -9,9 +9,11 @@ Example run:
 python ngram.py
 """
 
-import os
 import itertools
+import os
+
 import numpy as np
+from tqdm import tqdm
 
 # -----------------------------------------------------------------------------
 # utils for random number generation and sampling
@@ -43,8 +45,8 @@ def sample_discrete(probs, coinf):
 
 class NgramModel:
     def __init__(self, vocab_size, seq_len, smoothing=0.0):
-        self.seq_len = seq_len
         self.vocab_size = vocab_size
+        self.seq_len = seq_len
         self.smoothing = smoothing
         # the parameters of this model: an n-dimensional array of counts
         self.counts = np.zeros((vocab_size,) * seq_len, dtype=np.uint32)
@@ -52,8 +54,8 @@ class NgramModel:
         self.uniform = np.ones(self.vocab_size, dtype=np.float32) / self.vocab_size
 
     def train(self, tape):
-        assert isinstance(tape, list)
-        assert len(tape) == self.seq_len
+        assert isinstance(tape, list), f"Expected a list, got {type(tape)}"
+        assert len(tape) == self.seq_len, f"Expected a list of length {self.seq_len}, got {len(tape)}"
         self.counts[tuple(tape)] += 1
 
     def get_counts(self, tape):
@@ -61,10 +63,15 @@ class NgramModel:
         assert len(tape) == self.seq_len - 1
         return self.counts[tuple(tape)]
 
+    def get_prob_distribution(self):
+        counts = self.counts + self.smoothing
+        probs = counts / counts.sum(axis=-1, keepdims=True)
+        return probs
+
     def __call__(self, tape):
         # returns the conditional probability distribution of the next token
-        assert isinstance(tape, list)
-        assert len(tape) == self.seq_len - 1
+        assert isinstance(tape, list), f"Expected a list, got {type(tape)}"
+        assert len(tape) == self.seq_len - 1, f"Expected a list of length {self.seq_len - 1}, got {len(tape)}"
         # get the counts, apply smoothing, and normalize to get the probabilities
         counts = self.counts[tuple(tape)].astype(np.float32)
         counts += self.smoothing # add smoothing ("fake counts") to all counts
@@ -109,7 +116,7 @@ class BackoffNgramModel:
 
 # small utility function to iterate tokens with a fixed-sized window
 def dataloader(tokens, window_size):
-    for i in range(len(tokens) - window_size + 1):
+    for i in tqdm(range(len(tokens) - window_size + 1)):
         yield tokens[i:i+window_size]
 
 def eval_split(model, tokens):
@@ -130,36 +137,44 @@ def eval_split(model, tokens):
 
 # "train" the Tokenizer, so we're able to map between characters and tokens
 train_text = open('data/train.txt', 'r').read()
-assert all(c == '\n' or ('a' <= c <= 'z') for c in train_text)
+assert all(c == '\n' or ('a' <= c <= 'z') for c in train_text), f'Error expected only lowercase letters and newlines in train.txt.'
 uchars = sorted(list(set(train_text))) # unique characters we see in the input
 vocab_size = len(uchars)
 char_to_token = {c: i for i, c in enumerate(uchars)}
 token_to_char = {i: c for i, c in enumerate(uchars)}
 EOT_TOKEN = char_to_token['\n'] # designate \n as the delimiting <|endoftext|> token
 # pre-tokenize all the splits one time up here
-test_tokens = [char_to_token[c] for c in open('data/test.txt', 'r').read()]
-val_tokens = [char_to_token[c] for c in open('data/val.txt', 'r').read()]
-train_tokens = [char_to_token[c] for c in open('data/train.txt', 'r').read()]
+test_tokens, val_tokens, train_tokens = map(
+    lambda split: [char_to_token[c] for c in open(f'data/{split}.txt', 'r').read()],
+    ['test', 'val', 'train']
+)
 
-# hyperparameter search with grid search over the validation set
-seq_lens = [3, 4, 5]
-smoothings = [0.03, 0.1, 0.3, 1.0]
-best_loss = float('inf')
-best_kwargs = {}
-for seq_len, smoothing in itertools.product(seq_lens, smoothings):
-    # train the n-gram model
-    model = NgramModel(vocab_size, seq_len, smoothing)
-    for tape in dataloader(train_tokens, seq_len):
-        model.train(tape)
-    # evaluate the train/val loss
-    train_loss = eval_split(model, train_tokens)
-    val_loss = eval_split(model, val_tokens)
-    print("seq_len %d | smoothing %.2f | train_loss %.4f | val_loss %.4f"
-          % (seq_len, smoothing, train_loss, val_loss))
-    # update the best hyperparameters
-    if val_loss < best_loss:
-        best_loss = val_loss
-        best_kwargs = {'seq_len': seq_len, 'smoothing': smoothing}
+hparams_path = os.path.join("dev", "best_ngram_hparams.npy")
+
+if not os.path.exists(hparams_path):
+    # hyperparameter search with grid search over the validation set
+    seq_lens = [3, 4, 5]
+    smoothings = [0.03, 0.1, 0.3, 1.0]
+    best_loss = float('inf')
+    best_kwargs = {}
+    for i, (seq_len, smoothing) in enumerate(itertools.product(seq_lens, smoothings)):
+        # train the n-gram model
+        model = NgramModel(vocab_size, seq_len, smoothing)
+        for tape in dataloader(train_tokens, seq_len):
+            model.train(tape)
+        # evaluate the train/val loss
+        train_loss = eval_split(model, train_tokens)
+        val_loss = eval_split(model, val_tokens)
+        print(f"{i+1}/{len(seq_lens)*len(smoothings)} seq_len {seq_len} | smoothing {smoothing:.2f} | train_loss {train_loss:.4f} | val_loss {val_loss:.4f}")
+        # update the best hyperparameters
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_kwargs = {'seq_len': seq_len, 'smoothing': smoothing}
+    # save best hyperparameters to disk
+    np.save(hparams_path, best_kwargs)
+else:
+    # load the best hyperparameters from disk
+    best_kwargs = np.load(hparams_path, allow_pickle=True).item()
 
 # re-train the model with the best hyperparameters
 seq_len = best_kwargs['seq_len']
@@ -171,7 +186,8 @@ for tape in dataloader(train_tokens, seq_len):
 # sample from the model
 rng_state = [1337]
 tape = [EOT_TOKEN] * (seq_len - 1)
-for _ in range(200):
+num_tokens = 200
+for _ in range(num_tokens):
     probs = model(tape)
     # sample the next token
     coinf = random_f32(rng_state)
@@ -189,11 +205,9 @@ print() # newline
 # at the end, evaluate and report the test loss
 test_loss = eval_split(model, test_tokens)
 test_perplexity = np.exp(test_loss)
-print("test_loss %f, test_perplexity %f" % (test_loss, test_perplexity))
+print(f"test_loss {test_loss:.4f}, test_perplexity {test_perplexity:.4f}")
 
 # get the final counts, normalize them to probs, and write to disk for vis
-counts = model.counts + model.smoothing
-probs = counts / counts.sum(axis=-1, keepdims=True)
 vis_path = os.path.join("dev", "ngram_probs.npy")
-np.save(vis_path, probs)
+np.save(vis_path, model.get_prob_distribution())
 print(f"wrote {vis_path} to disk (for visualization)")

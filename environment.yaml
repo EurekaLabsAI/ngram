@@ -1,0 +1,6 @@
+name: ngram
+channels:
+  - defaults
+dependencies:
+  - numpy
+  - tqdm
