@@ -197,7 +197,7 @@ void ngram_inference(NgramModel *model, Tape* tape, float* probs) {
     // here, tape is of length `seq_len - 1`, and we want to predict the next token
     // probs should be a pre-allocated buffer of size `vocab_size`
 
-    int tail = (tape->head-1)%tape->length;
+    int tail = (tape->head-1+tape->length)%tape->length;
     int last_element = tape->buffer[tail];
     tape->buffer[tail] = 0; // temporarily set last element to 0
     // find the offset into the counts array based on the context
@@ -333,7 +333,7 @@ int main(int argc, char *argv[]) {
         // note that ngram_inference will only use the first seq_len - 1 tokens in buffer
         ngram_inference(&model, &test_loader.tape, probs);
         // and the last token in the tape buffer is the label
-        int target = test_loader.tape.buffer[(test_loader.tape.head-1)%test_loader.tape.length];
+        int target = test_loader.tape.buffer[(test_loader.tape.head-1+test_loader.tape.length)%test_loader.tape.length];
         // negative log likelihood loss
         sum_loss += -logf(probs[target]);
         count++;
