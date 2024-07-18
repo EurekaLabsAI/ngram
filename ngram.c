@@ -193,16 +193,27 @@ void ngram_train(NgramModel *model, const Tape* tape) {
     model->counts[offset]++;
 }
 
-void ngram_inference(NgramModel *model, Tape* tape, float* probs) {
+void ngram_inference(NgramModel *model, Tape* tape, float* probs, int is_sampling) {
     // here, tape is of length `seq_len - 1`, and we want to predict the next token
     // probs should be a pre-allocated buffer of size `vocab_size`
 
-    int tail = (tape->head-1+tape->length)%tape->length;
-    int last_element = tape->buffer[tail];
-    tape->buffer[tail] = 0; // temporarily set last element to 0
+    int last_element;
+    if (!is_sampling) {
+        int tail = (tape->head-1+tape->length)%tape->length;
+        last_element = tape->buffer[tail];  // store last element for restoration
+        tape->buffer[tail] = 0; // temporarily set last element to 0
+    } else {
+        tape->buffer[tape->head] = 0; // set last element to 0
+        tape->head = (tape->head + 1) % tape->length;  // set the head such that we pass last model->seq_len - 1 tokens
+    }
     // find the offset into the counts array based on the context
     size_t offset = ravel_index(tape, model->seq_len, model->vocab_size);
-    tape->buffer[tail] = last_element; // restore last element
+    if (!is_sampling) {
+        int tail = (tape->head-1+tape->length)%tape->length;
+        tape->buffer[tail] = last_element; // restore last element
+    } else {
+        tape->head = (tape->head - 1 + tape->length) % tape->length;  // restore head
+    }
     // seek to the row of counts for this context
     uint32_t* counts_row = model->counts + offset;
 
@@ -311,11 +322,12 @@ int main(int argc, char *argv[]) {
 
     // sample from the model for 200 time steps
     Tape sample_tape;
-    tape_init(&sample_tape, seq_len - 1);
+    tape_init(&sample_tape, seq_len);
     tape_set(&sample_tape, EOT_TOKEN); // fill with EOT tokens to init
     uint64_t rng = 1337;
+    int is_sampling = 1;
     for (int i = 0; i < 200; i++) {
-        ngram_inference(&model, &sample_tape, probs);
+        ngram_inference(&model, &sample_tape, probs, is_sampling);
         float coinf = random_f32(&rng);
         int token = sample_discrete(probs, NUM_TOKENS, coinf);
         tape_update(&sample_tape, token);
@@ -329,9 +341,10 @@ int main(int argc, char *argv[]) {
     dataloader_init(&test_loader, "data/test.txt", seq_len);
     float sum_loss = 0.0f;
     int count = 0;
+    is_sampling = 0;
     while (dataloader_next(&test_loader)) {
         // note that ngram_inference will only use the first seq_len - 1 tokens in buffer
-        ngram_inference(&model, &test_loader.tape, probs);
+        ngram_inference(&model, &test_loader.tape, probs, is_sampling);
         // and the last token in the tape buffer is the label
         int target = test_loader.tape.buffer[(test_loader.tape.head-1+test_loader.tape.length)%test_loader.tape.length];
         // negative log likelihood loss
