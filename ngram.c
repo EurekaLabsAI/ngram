@@ -111,7 +111,7 @@ void tape_init(Tape *tape, const int length) {
     // we will allow a buffer of length 0, useful for the Unigram model
     assert(length >= 0);
     tape->length = length;
-    tape->head = 0; // points to the oldest element in the buffer
+    tape->head = 0; // once the tape is full it points to the oldest element in the buffer
     tape->n = 0; // counts the number of elements in the buffer up to max
     tape->buffer = NULL;
     if (length > 0) {
@@ -206,14 +206,17 @@ void ngram_inference(NgramModel *model, Tape* tape, float* probs, int is_samplin
         tape->buffer[tape->head] = 0; // set last element to 0
         tape->head = (tape->head + 1) % tape->length;  // set the head such that we pass last model->seq_len - 1 tokens
     }
+
     // find the offset into the counts array based on the context
     size_t offset = ravel_index(tape, model->seq_len, model->vocab_size);
+
     if (!is_sampling) {
         int tail = (tape->head-1+tape->length)%tape->length;
         tape->buffer[tail] = last_element; // restore last element
     } else {
         tape->head = (tape->head - 1 + tape->length) % tape->length;  // restore head
     }
+
     // seek to the row of counts for this context
     uint32_t* counts_row = model->counts + offset;
 
@@ -346,7 +349,8 @@ int main(int argc, char *argv[]) {
         // note that ngram_inference will only use the first seq_len - 1 tokens in buffer
         ngram_inference(&model, &test_loader.tape, probs, is_sampling);
         // and the last token in the tape buffer is the label
-        int target = test_loader.tape.buffer[(test_loader.tape.head-1+test_loader.tape.length)%test_loader.tape.length];
+        int tail = (test_loader.tape.head-1+test_loader.tape.length)%test_loader.tape.length;
+        int target = test_loader.tape.buffer[tail];
         // negative log likelihood loss
         sum_loss += -logf(probs[target]);
         count++;
