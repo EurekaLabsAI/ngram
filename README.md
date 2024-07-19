@@ -1,6 +1,6 @@
 # ngram
 
-In this module we build the n-gram Language Model. In the process, we learn a lot of the basics of machine learning (training, evaluation, data splits, hyperparameters, overfitting) and the basics of autoregressive language modeling (tokenization, next token prediction, perplexity, sampling). GPT is "just" a very large n-gram model, too. The only difference is that GPT uses a neural network to calculate the probability of the next token, while n-gram uses a simple count-based approach.
+In this module we build the n-gram Language Model. In the process, we learn a lot of the basics of machine learning (training, evaluation, data splits, hyperparameters, overfitting) and the basics of autoregressive language modeling (tokenization, next token prediction, perplexity, sampling). GPT is "just" a very large n-gram model, too, with the added ability to learn to approximate the associative recall functionality. The only difference is that GPT uses a neural network to calculate the probability of the next token, while n-gram uses a simple count-based approach.
 
 Our dataset is that of 32,032 names from [ssa.gov](https://www.ssa.gov/oact/babynames/) for the year 2018, which were split into 1,000 names in the test split, 1,000 in val split, and the rest in the training split, all of them inside the `data/` folder. Therefore, our n-gram model will essentially try to learn the statistics of the characters in these names, and then generate new names by sampling from the model.
 
