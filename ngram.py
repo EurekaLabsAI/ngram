@@ -35,8 +35,6 @@ class RNG:
         # random float32 in [0, 1)
         return (self.random_u32() >> 8) / 16777216.0
 
-random = RNG(1337)
-
 # -----------------------------------------------------------------------------
 # sampling from the model
 
@@ -180,11 +178,12 @@ for tape in dataloader(train_tokens, seq_len):
     model.train(tape)
 
 # sample from the model
+sample_rng = RNG(1337)
 tape = [EOT_TOKEN] * (seq_len - 1)
 for _ in range(200):
     probs = model(tape)
     # sample the next token
-    coinf = random.random()
+    coinf = sample_rng.random()
     probs_list = probs.tolist()
     next_token = sample_discrete(probs_list, coinf)
     # otherwise update the token tape, print token and continue
