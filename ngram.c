@@ -98,6 +98,53 @@ char tokenizer_decode(const int token) {
 }
 
 // ----------------------------------------------------------------------------
+// tape stores a fixed window of tokens, functions like a finite queue
+
+typedef struct {
+    int n;
+    int length;
+    int head;
+    int* buffer;
+} Tape;
+
+void tape_init(Tape *tape, const int length) {
+    // we will allow a buffer of length 0, useful for the Unigram model
+    assert(length >= 0);
+    tape->length = length;
+    tape->head = 0; // once the tape is full it points to the oldest element in the buffer
+    tape->n = 0; // counts the number of elements in the buffer up to max
+    tape->buffer = NULL;
+    if (length > 0) {
+        tape->buffer = (int*)mallocCheck(length * sizeof(int));
+    }
+}
+
+void tape_set(Tape *tape, const int val) {
+    for (int i = 0; i < tape->length; i++) {
+        tape->buffer[i] = val;
+    }
+}
+
+int tape_update(Tape *tape, const int token) {
+    // returns 1 if the tape is ready/full, 0 otherwise
+    if (tape->length == 0) {
+        return 1; // unigram tape is always ready
+    }
+    tape->buffer[tape->head] = token;
+    tape->head = (tape->head + 1) % tape->length;  // circular buffer logic
+
+    // keep track of when we've filled the tape
+    if (tape->n < tape->length) {
+        tape->n++;
+    }
+    return (tape->n == tape->length);
+}
+
+void tape_free(Tape *tape) {
+    free(tape->buffer);
+}
+
+// ----------------------------------------------------------------------------
 // ngram model
 
 typedef struct {
@@ -108,8 +155,6 @@ typedef struct {
     // parameters
     size_t num_counts; // size_t because int would only handle up to 2^31-1 ~= 2 billion counts
     uint32_t* counts;
-    // internal buffer for ravel_index
-    int* ravel_buffer;
 } NgramModel;
 
 void ngram_init(NgramModel *model, const int vocab_size, const int seq_len, const float smoothing) {
@@ -125,17 +170,15 @@ void ngram_init(NgramModel *model, const int vocab_size, const int seq_len, cons
     for (size_t i = 0; i < model->num_counts; i++) {
         model->counts[i] = 0;
     }
-    // allocate buffer we will use for ravel_index
-    model->ravel_buffer = (int*)mallocCheck(seq_len * sizeof(int));
 }
 
-size_t ravel_index(const int* index, const int n, const int dim) {
+size_t ravel_index(const Tape* tape, const int n, const int dim) {
     // convert an n-dimensional index into a 1D index (ravel_multi_index in numpy)
     // each index[i] is in the range [0, dim)
     size_t index1d = 0;
     size_t multiplier = 1;
     for (int i = n - 1; i >= 0; i--) {
-        int ix = index[i];
+        int ix = tape->buffer[(tape->head + i) % tape->length];
         assert(ix >= 0 && ix < dim);
         index1d += multiplier * ix;
         multiplier *= dim;
@@ -143,24 +186,37 @@ size_t ravel_index(const int* index, const int n, const int dim) {
     return index1d;
 }
 
-void ngram_train(NgramModel *model, const int* tape) {
+void ngram_train(NgramModel *model, const Tape* tape) {
     // tape here is of length `seq_len`, and we want to update the counts
     size_t offset = ravel_index(tape, model->seq_len, model->vocab_size);
     assert(offset >= 0 && offset < model->num_counts);
     model->counts[offset]++;
 }
 
-void ngram_inference(NgramModel *model, const int* tape, float* probs) {
+void ngram_inference(NgramModel *model, Tape* tape, float* probs, int is_sampling) {
     // here, tape is of length `seq_len - 1`, and we want to predict the next token
     // probs should be a pre-allocated buffer of size `vocab_size`
 
-    // copy the tape into the buffer and set the last element to zero
-    for (int i = 0; i < model->seq_len - 1; i++) {
-        model->ravel_buffer[i] = tape[i];
+    int last_element;
+    if (!is_sampling) {
+        int tail = (tape->head-1+tape->length)%tape->length;
+        last_element = tape->buffer[tail];  // store last element for restoration
+        tape->buffer[tail] = 0; // temporarily set last element to 0
+    } else {
+        tape->buffer[tape->head] = 0; // set last element to 0
+        tape->head = (tape->head + 1) % tape->length;  // set the head such that we pass last model->seq_len - 1 tokens
     }
-    model->ravel_buffer[model->seq_len - 1] = 0;
+
     // find the offset into the counts array based on the context
-    size_t offset = ravel_index(model->ravel_buffer, model->seq_len, model->vocab_size);
+    size_t offset = ravel_index(tape, model->seq_len, model->vocab_size);
+
+    if (!is_sampling) {
+        int tail = (tape->head-1+tape->length)%tape->length;
+        tape->buffer[tail] = last_element; // restore last element
+    } else {
+        tape->head = (tape->head - 1 + tape->length) % tape->length;  // restore head
+    }
+
     // seek to the row of counts for this context
     uint32_t* counts_row = model->counts + offset;
 
@@ -187,55 +243,6 @@ void ngram_inference(NgramModel *model, const int* tape, float* probs) {
 
 void ngram_free(NgramModel *model) {
     free(model->counts);
-    free(model->ravel_buffer);
-}
-
-// ----------------------------------------------------------------------------
-// tape stores a fixed window of tokens, functions like a finite queue
-
-typedef struct {
-    int n;
-    int length;
-    int* buffer;
-} Tape;
-
-void tape_init(Tape *tape, const int length) {
-    // we will allow a buffer of length 0, useful for the Unigram model
-    assert(length >= 0);
-    tape->length = length;
-    tape->n = 0; // counts the number of elements in the buffer up to max
-    tape->buffer = NULL;
-    if (length > 0) {
-        tape->buffer = (int*)mallocCheck(length * sizeof(int));
-    }
-}
-
-void tape_set(Tape *tape, const int val) {
-    for (int i = 0; i < tape->length; i++) {
-        tape->buffer[i] = val;
-    }
-}
-
-int tape_update(Tape *tape, const int token) {
-    // returns 1 if the tape is ready/full, 0 otherwise
-    if (tape->length == 0) {
-        return 1; // unigram tape is always ready
-    }
-    // shift all elements to the left by one
-    for (int i = 0; i < tape->length - 1; i++) {
-        tape->buffer[i] = tape->buffer[i + 1];
-    }
-    // add the new token to the end (on the right)
-    tape->buffer[tape->length - 1] = token;
-    // keep track of when we've filled the tape
-    if (tape->n < tape->length) {
-        tape->n++;
-    }
-    return (tape->n == tape->length);
-}
-
-void tape_free(Tape *tape) {
-    free(tape->buffer);
 }
 
 // ----------------------------------------------------------------------------
@@ -309,7 +316,7 @@ int main(int argc, char *argv[]) {
     DataLoader train_loader;
     dataloader_init(&train_loader, "data/train.txt", seq_len);
     while (dataloader_next(&train_loader)) {
-        ngram_train(&model, train_loader.tape.buffer);
+        ngram_train(&model, &train_loader.tape);
     }
     dataloader_free(&train_loader);
 
@@ -318,11 +325,12 @@ int main(int argc, char *argv[]) {
 
     // sample from the model for 200 time steps
     Tape sample_tape;
-    tape_init(&sample_tape, seq_len - 1);
+    tape_init(&sample_tape, seq_len);
     tape_set(&sample_tape, EOT_TOKEN); // fill with EOT tokens to init
     uint64_t rng = 1337;
+    int is_sampling = 1;
     for (int i = 0; i < 200; i++) {
-        ngram_inference(&model, sample_tape.buffer, probs);
+        ngram_inference(&model, &sample_tape, probs, is_sampling);
         float coinf = random_f32(&rng);
         int token = sample_discrete(probs, NUM_TOKENS, coinf);
         tape_update(&sample_tape, token);
@@ -336,11 +344,13 @@ int main(int argc, char *argv[]) {
     dataloader_init(&test_loader, "data/test.txt", seq_len);
     float sum_loss = 0.0f;
     int count = 0;
+    is_sampling = 0;
     while (dataloader_next(&test_loader)) {
         // note that ngram_inference will only use the first seq_len - 1 tokens in buffer
-        ngram_inference(&model, test_loader.tape.buffer, probs);
+        ngram_inference(&model, &test_loader.tape, probs, is_sampling);
         // and the last token in the tape buffer is the label
-        int target = test_loader.tape.buffer[seq_len - 1];
+        int tail = (test_loader.tape.head-1+test_loader.tape.length)%test_loader.tape.length;
+        int target = test_loader.tape.buffer[tail];
         // negative log likelihood loss
         sum_loss += -logf(probs[target]);
         count++;
