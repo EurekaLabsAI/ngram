@@ -36,8 +36,12 @@ void *malloc_check(size_t size, const char *file, int line) {
 size_t powi(int base, int exp) {
     // integer exponentiation utility
     size_t result = 1;
-    for (int i = 0; i < exp; i++) {
-        result *= base;
+    while(exp > 0){
+        if (exp & 1){
+          result *= base;
+        }
+        base *= base;
+        exp >>= 1;
     }
     return result;
 }
