@@ -62,8 +62,27 @@ clang -O3 -o ngram ngram.c -lm
 
 The C version runs, of course, much faster. You'll see the same samples and test perplexity.
 
+### GUI
+
+The GUI is built with [streamlit](https://docs.streamlit.io/).
+
+Create a virtual environment and install the dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install streamlit matplotlib seaborn
+```
+
+Then start the GUI:
+
+```bash
+streamlit run dev/gui.py
+```
+
+The GUI itself will guide you through the rest of the steps.
+
 ### TODOs
 
 - Make better
 - Make exercises
-- Call for help: nice visualization / webapp that shows and animates the 4-gram language model and how it works.
