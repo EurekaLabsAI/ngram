@@ -67,3 +67,61 @@ The C version runs, of course, much faster. You'll see the same samples and test
 - Make better
 - Make exercises
 - Call for help: nice visualization / webapp that shows and animates the 4-gram language model and how it works.
+
+
+--------------------------------------------------------------------------------------------------------
+
+# N-gram Exercises
+
+Here are a few exercises divided into 3 categories for n-gram development: Foundational, Functional, and Advanced.
+
+## Foundational Level: Building a Simple Unigram Model
+
+### Instructions
+
+**1. Read and Tokenize Data:**
+- Use a small text corpus (e.g., `lazydog.txt` -> "the quick brown fox jumps over the lazy dog
+the quick brown fox is quick
+lazy dogs are not quick"):
+
+- Tokenize the text into characters or words.
+
+**2. Build the Unigram Model:**
+- Count the occurrences of each token in the training data.
+- Calculate the probabilities of each token by normalizing the counts.
+
+**3. Generate Text:**
+- Sample tokens from the unigram distribution to generate text.
+
+## Basic (Functional) Level: Implementing a Bigram Model
+
+### Instructions
+
+**1. Data Preparation:**
+- Tokenize the text and create a vocabulary.
+
+**2. Build the Bigram Model:**
+- Count the occurrences of each bigram in the training data.
+- Calculate the conditional probabilities for the next token given the current token.
+
+**3. Generate Text:**
+- Use the bigram model to generate text by sampling tokens based on the previous token.
+
+## Advanced Level: Implementing and Evaluating a Trigram Model
+
+### Instructions
+
+**1. Data Preparation:**
+- Tokenize the text and create a vocabulary.
+
+**2. Build the Trigram Model:**
+- Count the occurrences of each trigram in the training data.
+- Calculate the conditional probabilities for the next token given the previous two tokens.
+
+**3. Evaluate the Model:**
+- Implement a function to compute perplexity.
+- Compare the perplexity of unigram, bigram, and trigram models on the validation data.
+
+**4. Generate Text:**
+- Use the trigram model to generate text by sampling tokens based on the previous two tokens.
+
