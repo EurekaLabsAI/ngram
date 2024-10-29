@@ -117,7 +117,7 @@ test_file = st.sidebar.file_uploader("📂 Upload Test File", type=["txt"])
 
 # Ensure all files are uploaded
 if train_file is None or val_file is None or test_file is None:
-    st.warning("⚠️ Please upload all three files: training, validation, and test files.")
+    st.warning("⚠️ Please upload all three files: training, validation, and test files. (Download data from github)")
     st.stop()
 
 
