@@ -1,0 +1,9 @@
+# install these libraries to execute the N gram visualizer
+streamlit
+numpy
+matplotlib
+seaborn
+python-Levenshtein
+wordcloud
+scikit-learn
+pandas
